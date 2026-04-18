@@ -1,0 +1,19 @@
+# ビルド環境はホスト（arm64）のネイティブで実行することでビルドを高速化
+FROM --platform=$BUILDPLATFORM golang:1.19 AS build
+
+# EKS Node（t3.medium）はamd64なので、クロスコンパイルのターゲットをamd64に指定
+ARG TARGETARCH
+WORKDIR /go/src/tasky
+COPY . .
+RUN go mod download
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -o /go/src/tasky/tasky
+
+# 最終イメージはEKS Node（amd64）向けに固定
+FROM --platform=linux/amd64 alpine:3.17.0 as release
+
+WORKDIR /app
+COPY --from=build /go/src/tasky/tasky .
+COPY --from=build /go/src/tasky/assets ./assets
+COPY --from=build /go/src/tasky/wizexercise.txt .
+EXPOSE 8080
+ENTRYPOINT ["/app/tasky"]
