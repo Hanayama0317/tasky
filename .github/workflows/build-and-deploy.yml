@@ -71,11 +71,23 @@ jobs:
             --name ${{ env.EKS_CLUSTER_NAME }} \
             --region ${{ env.AWS_REGION }}
 
+      - name: Get MongoDB private IP
+        id: mongo-ip
+        run: |
+          MONGO_IP=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=wiz-mongo" "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].PrivateIpAddress" \
+            --output text \
+            --region ${{ env.AWS_REGION }})
+          echo "ip=$MONGO_IP" >> $GITHUB_OUTPUT
+
       - name: Deploy new image to EKS
         env:
           IMAGE: ${{ steps.build-push.outputs.image }}
+          MONGO_IP: ${{ steps.mongo-ip.outputs.ip }}
         run: |
           kubectl set image deployment/tasky tasky=$IMAGE
+          kubectl set env deployment/tasky MONGODB_URI="mongodb://admin:pass123@${MONGO_IP}:27017/go-mongodb?authSource=admin"
           kubectl rollout status deployment/tasky --timeout=120s
 
       - name: Show service status
